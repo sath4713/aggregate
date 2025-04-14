@@ -1,7 +1,7 @@
+# components/feeds.py
+
 feeds = {
-    "MLS Soccer": "https://www.mlssoccer.com/rss",
-    "Premier League": "https://www.premierleague.com/rss",
-    "NBA": "https://www.nba.com/rss",
-    "F1 News": "https://www.formula1.com/rss",
-    "MotoGP": "https://www.motogp.com/rss"
+    "ESPN": "https://www.espn.com/espn/rss/news",
+    "BBC Sport": "http://feeds.bbci.co.uk/sport/rss.xml?edition=uk",
+    "Sky Sports": "https://www.skysports.com/rss/12040",
 }
