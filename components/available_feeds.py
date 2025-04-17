@@ -79,7 +79,7 @@ available_feeds = {
     },
     "Combat": {
         "Boxing": [
-            {'name': 'Boxing - Fight News', 'url': 'http://www.fightnews.com/feed'},
+            #{'name': 'Boxing - Fight News', 'url': 'http://www.fightnews.com/feed'},
             {'name': 'Boxing - ESPN', 'url': 'https://www.espn.com/espn/rss/boxing/news'},
         ],
         "UFC_MMA": [ # Combined UFC/MMA
