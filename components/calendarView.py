@@ -1,3 +1,83 @@
+
+# import streamlit as st
+# from dateutil import parser
+# from dateutil.tz import tzlocal
+# from datetime import date
+
+# def renderScheduleCalendar(schedule_data=None, selected_date: date | None = None):
+#     st.subheader("Sports Schedule Calendar")
+
+#     if schedule_data is None:
+#         st.info("Please select a league in the sidebar to view the schedule.")
+#         return
+
+#     if selected_date is None:
+#         selected_date = date.today()
+
+#     st.write(f"### Schedule for {selected_date.strftime('%Y-%m-%d')}")
+
+#     found = False
+#     for ev in schedule_data:
+#         ev_dt = ev.get("start_datetime")
+#         if not ev_dt:
+#             continue
+
+#         # Normalize & convert to local
+#         if isinstance(ev_dt, str):
+#             ev_dt = parser.parse(ev_dt)
+#         if ev_dt.tzinfo:
+#             ev_dt = ev_dt.astimezone(tzlocal())
+#         if ev_dt.date() != selected_date:
+#             continue
+
+#         found = True
+#         title  = ev.get("title")           # TSDB single‑event name
+#         home   = ev.get("home_team")
+#         away   = ev.get("away_team")
+#         status = ev.get("status", "")
+#         result = ev.get("result", "")
+#         venue  = ev.get("venue", "")
+#         league = ev.get("league_name", "")
+#         time_str = ev_dt.strftime("%I:%M %p")
+
+#         # If it's a title‑only event (no home/away), render full‑width
+#         if title and not home and not away:
+#             st.markdown(f"## {title}")
+#             meta = f"*Time:* {time_str}"
+#             if league:
+#                 meta += f"  •  *League:* {league}"
+#             st.markdown(meta)
+#             st.divider()
+#             continue
+
+#         # Otherwise, render the standard 4‑column layout
+#         c1, c2, c3, c4 = st.columns([3, 1, 3, 2])
+#         with c1:
+#             st.markdown(f"**{away or 'TBD'}**")
+#         with c2:
+#             st.markdown("vs")
+#         with c3:
+#             st.markdown(f"**{home or 'TBD'}**")
+#         with c4:
+#             st.markdown(result or status or "")
+
+#         # Build the meta line
+#         meta = f"*Time:* {time_str}"
+#         if venue:
+#             meta += f"  •  *Venue:* {venue}"
+#         if league:
+#             meta += f"  •  *League:* {league}"
+#         if ev.get("network"):
+#             meta += f"  •  *TV:* {ev['network']}"
+#         st.markdown(meta)
+#         st.divider()
+
+#     if not found:
+#         st.warning("No games scheduled for this date.")
+
+
+# components/calendarView.py
+
 import streamlit as st
 from dateutil import parser
 from dateutil.tz import tzlocal
@@ -5,17 +85,16 @@ from datetime import date
 
 def renderScheduleCalendar(schedule_data=None, selected_date: date | None = None):
     """
-    Renders a calendar view for the given schedule_data on the given selected_date.
-    Converts each event time to the local timezone before comparing dates.
+    Renders a unified calendar listing for both ESPN and TSDB events.
+    Title‑only events (like Paris–Roubaix) show as a full-width header.
+    Home/away events use the 4-column layout.
     """
     st.subheader("Sports Schedule Calendar")
 
-    # 1) No league chosen yet?
     if schedule_data is None:
         st.info("Please select a league in the sidebar to view the schedule.")
         return
 
-    # 2) Use passed-in date or default to today
     if selected_date is None:
         selected_date = date.today()
 
@@ -24,43 +103,60 @@ def renderScheduleCalendar(schedule_data=None, selected_date: date | None = None
     found = False
     for ev in schedule_data:
         ev_dt = ev.get("start_datetime")
-
-        # 3) Normalize string → datetime
-        if isinstance(ev_dt, str):
-            try:
-                ev_dt = parser.parse(ev_dt)
-            except:
-                ev_dt = None
-
         if not ev_dt:
             continue
 
-        # 4) Convert UTC→local before matching
-        if ev_dt.tzinfo is not None:
-            ev_dt_local = ev_dt.astimezone(tzlocal())
-        else:
-            ev_dt_local = ev_dt  # assume already local
-
-        # 5) Only render events matching our selected local date
-        if ev_dt_local.date() != selected_date:
+        # Normalize and convert to local tz
+        if isinstance(ev_dt, str):
+            ev_dt = parser.parse(ev_dt)
+        if ev_dt.tzinfo:
+            ev_dt = ev_dt.astimezone(tzlocal())
+        if ev_dt.date() != selected_date:
             continue
 
         found = True
-        home      = ev.get("home_team", "TBD")
-        away      = ev.get("away_team", "TBD")
-        status    = ev.get("status", "Scheduled")
-        result    = ev.get("result", "")
-        venue     = ev.get("venue", "N/A")
-        time_str  = ev_dt_local.strftime("%I:%M %p")  # now in local tz
+        title  = ev.get("title")           # TSDB single-event name
+        home   = ev.get("home_team")
+        away   = ev.get("away_team")
+        status = ev.get("status", "")
+        result = ev.get("result", "")
+        venue  = ev.get("venue", "")
+        league = ev.get("league_name", "")
+        network = ev.get("network", "")
+        time_str = ev_dt.strftime("%I:%M %p")
 
-        # Layout columns
-        c1, c2, c3, c4 = st.columns([2,1,2,2])
-        with c1: st.markdown(f"**{away}**")
-        with c2: st.markdown("vs")
-        with c3: st.markdown(f"**{home}**")
-        with c4: st.markdown(f"{result or status}")
+        # Title‑only (e.g. Paris–Roubaix): full-width header
+        if title and not home and not away:
+            st.markdown(f"## {title}")
+            meta = f"*Time:* {time_str}"
+            if league:
+                meta += f"  •  *League:* {league}"
+            if network:
+                meta += f"  •  *TV:* {network}"
+            st.markdown(meta)
+            st.divider()
+            continue
 
-        st.markdown(f"*Time:* {time_str}  •  *Venue:* {venue}")
+        # Standard 4-column layout
+        c1, c2, c3, c4 = st.columns([3,1,3,2])
+        with c1:
+            st.markdown(f"**{away or 'TBD'}**")
+        with c2:
+            st.markdown("vs")
+        with c3:
+            st.markdown(f"**{home or 'TBD'}**")
+        with c4:
+            st.markdown(result or status or "")
+
+        # Meta line
+        meta = f"*Time:* {time_str}"
+        if venue:
+            meta += f"  •  *Venue:* {venue}"
+        if league:
+            meta += f"  •  *League:* {league}"
+        if network:
+            meta += f"  •  *TV:* {network}"
+        st.markdown(meta)
         st.divider()
 
     if not found:

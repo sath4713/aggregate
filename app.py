@@ -1,217 +1,304 @@
-# # app.py
 # import streamlit as st
-# import logging
-
-# # Import the new components
-# from components.feedSelector import renderFeedSelector
+# from datetime import date
+# from components.available_feeds import available_feeds
 # from components.newsFeed import renderMultipleNewsFeeds
-# # available_feeds is used implicitly by feedSelector now
-
-# # --- Basic Logging Configuration --- (Optional but recommended)
-# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# # --- Streamlit App Layout ---
-# st.set_page_config(layout="wide") # Use wide layout for better news display
-
-# st.title("📰 Your Custom Sports News Feed")
-# st.caption("Select your favorite feeds from the sidebar to build your personalized news stream.")
-
-# # --- Sidebar for feed selection ---
-# # The selector now manages its state via session_state and returns the selected list
-# selected_urls = renderFeedSelector()
-
-# # --- Main Area for Displaying Feeds ---
-# # Pass the list of selected URLs to the rendering function
-# renderMultipleNewsFeeds(selected_urls, max_items_per_feed=10) # Adjust max items per feed if needed
-
-# --- Optional: Footer or other info ---
-# st.sidebar.info("Your selections are saved for this session.")
-
-# app.py
-# import streamlit as st
-# import logging
-# import datetime
-
-# # Import components
 # from components.calendarView import renderScheduleCalendar
-# # Import API client functions
-# from components.api_client import get_schedule_by_league, get_espn_schedule, get_pyespn_schedule, PYESPN_AVAILABLE # Import new func and availability flag
+# from components.api_client import get_espn_scoreboard, get_tsdb_schedule_by_season
 
-# # --- Basic Logging Configuration ---
-# # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# # --- Mapping of sports to their supported ESPN leagues/slugs ---
+# LEAGUES_BY_SPORT = {
+#     "Basketball": {
+#         "NBA":                          ("basketball", "nba"),
+#         "WNBA":                         ("basketball", "wnba"),
+#         "NCAAM (Men's College BBall)":  ("basketball", "mens-college-basketball"),
+#         "NCAAW (Women's College BBall)":("basketball", "womens-college-basketball"),
+#     },
+#     "Football": {
+#         "NFL":                          ("football",   "nfl"),
+#         "NCAAF (College Football)":     ("football",   "college-football"),
+#     },
+#     "Baseball": {
+#         "MLB":                          ("baseball",   "mlb"),
+#     },
+#     "Hockey": {
+#         "NHL":                          ("hockey",     "nhl"),
+#     },
+#     "Soccer": {
+#         "MLS":                          ("soccer",     "usa.1"),
+#         "Premier League":               ("soccer",     "eng.1"),
+#         "La Liga":                      ("soccer",     "esp.1"),
+#         "Bundesliga":                   ("soccer",     "ger.1"),
+#         "Serie A":                      ("soccer",     "ita.1"),
+#         "Ligue 1":                      ("soccer",     "fra.1"),
+#         "Liga MX":                      ("soccer",     "mex.1"),
+#         "Champions League":             ("soccer",     "uefa.champions"),
+#         "Europa League":                ("soccer",     "uefa.europa"),
+#     },
+#     "Motorsports": {
+#         "Formula 1":                    ("racing",     "f1"),
+#         "NASCAR Cup Series":            ("racing",     "nascar.cup"),
+#     },
+#     "Golf": {
+#         "The Masters":                  ("golf",       "masters"),
+#         "PGA Championship":             ("golf",       "pga"),
+#         "US Open (Golf)":               ("golf",       "usopen"),
+#         "The Open Championship":        ("golf",       "britishopen"),
+#     },
+#     "Tennis": {
+#         "Wimbledon":                    ("tennis",     "wimbledon"),
+#         "US Open (Tennis)":             ("tennis",     "usopen"),
+#         "Australian Open":              ("tennis",     "australianopen"),
+#         "French Open":                  ("tennis",     "frenchopen"),
+#     },
+# }
 
-# # --- Streamlit App Layout ---
+# # --- TSDB‐only leagues (free tier, ≤100 events/season) ---
+# TSDB_LEAGUES_BY_SPORT = {
+#     "Cycling": {
+#         "UCI World Tour": "4465",
+#         "UCI ProSeries":  "5330",
+#     },
+#     # add more TSDB‐only sports here as needed…
+# }
+
+# # --- Streamlit page config ---
 # st.set_page_config(layout="wide")
-# st.title("📅 Sports Schedules")
+# st.title("🏟️ Sports Hub")
 
-# # --- Sidebar ---
-# st.sidebar.header("Schedule Options")
+# # --- Session state for user profile ---
+# if 'selected_leagues' not in st.session_state:
+#     st.session_state.selected_leagues = []
 
-# # --- Data Source Selection ---
-# # Add 'pyespn Library' as an option if available
-# source_options = ["ESPN Direct API", "TheSportsDB"]
-# if PYESPN_AVAILABLE:
-#     source_options.insert(0, "ESPN (pyespn Library)") # Add pyespn as first option if installed
+# # --- Sidebar navigation ---
+# mode = st.sidebar.radio("Navigate to:", ["Profile", "News Feed", "Schedules"])
 
-# data_source = st.sidebar.radio("Select Data Source:", source_options, index=0)
+# if mode == "Profile":
+#     st.header("👤 Your Profile: Choose Leagues")
+#     st.write("Check the leagues you follow:")
 
-# # --- League/Schedule Selection ---
-# schedule_data = None
+#     # ESPN‐backed leagues
+#     for sport, leagues in LEAGUES_BY_SPORT.items():
+#         with st.expander(sport, expanded=False):
+#             for league_name in leagues:
+#                 key = f"profile_{league_name}"
+#                 checked = league_name in st.session_state.selected_leagues
+#                 new_val = st.checkbox(league_name, value=checked, key=key)
+#                 if new_val and league_name not in st.session_state.selected_leagues:
+#                     st.session_state.selected_leagues.append(league_name)
+#                 if not new_val and league_name in st.session_state.selected_leagues:
+#                     st.session_state.selected_leagues.remove(league_name)
 
-# if data_source == "ESPN (pyespn Library)":
-#     st.sidebar.subheader("ESPN Leagues (via pyespn)")
-#     # Use the league codes supported by pyespn from the docs
-#     pyespn_league_codes = {
-#         "NFL": "nfl",
-#         "NBA": "nba",
-#         "WNBA": "wnba",
-#         "Men's College BBall": "mcbb",
-#         "College Football": "cfb",
-#         "College Baseball": "cbb",
-#         "College Softball": "csb",
-#         "Formula 1": "f1",
-#         "NASCAR": "nascar",
-#     }
-#     selected_pyespn_league_name = st.sidebar.selectbox(
-#         "Choose ESPN League:",
-#         options=list(pyespn_league_codes.keys())
-#     )
-#     if selected_pyespn_league_name:
-#          selected_code = pyespn_league_codes[selected_pyespn_league_name]
-#          # Call the new pyespn API function
-#          schedule_data = get_pyespn_schedule(selected_code)
+#     # TSDB‐only leagues
+#     for sport, leagues in TSDB_LEAGUES_BY_SPORT.items():
+#         with st.expander(f"{sport} (via TheSportsDB)", expanded=False):
+#             for league_name in leagues:
+#                 key = f"profile_{league_name}"
+#                 checked = league_name in st.session_state.selected_leagues
+#                 new_val = st.checkbox(league_name, value=checked, key=key)
+#                 if new_val and league_name not in st.session_state.selected_leagues:
+#                     st.session_state.selected_leagues.append(league_name)
+#                 if not new_val and league_name in st.session_state.selected_leagues:
+#                     st.session_state.selected_leagues.remove(league_name)
 
-# elif data_source == "ESPN Direct API":
-#     st.sidebar.subheader("ESPN Leagues (via Direct API)")
-#     # Use sport/league slugs for direct V2 API
-#     espn_direct_options = {
-#         "NFL": ("football", "nfl"),
-#         "NBA": ("basketball", "nba"),
-#         "WNBA": ("basketball", "wnba"),
-#         "MLB": ("baseball", "mlb"),
-#         "NHL": ("hockey", "nhl"),
-#         "NCAAF": ("football", "ncaaf"),
-#         "NCAAB": ("basketball", "mens-college-basketball"),
-#         "WNBA": ("basketball", "wnba"),
-#         "MLS (Soccer)": ("soccer", "usa.1"),
-#         "Premier League (Soccer)": ("soccer", "eng.1"),
-#         "La Liga (Soccer)": ("soccer", "esp.1"),
-#         "Bundesliga (Soccer)": ("soccer", "ger.1"),
-#         "Serie A (Soccer)": ("soccer", "ita.1"),
-#         "Ligue 1 (Soccer)": ("soccer", "fra.1"),
-#         "Liga MX (Soccer)": ("soccer", "mex.1"),
-#         "Champions League (Soccer)": ("soccer", "uefa.champions"),
-#         "Europa League (Soccer)": ("soccer", "uefa.europa"),
-#         "Formula 1": ("racing", "f1"),
-#         "NASCAR": ("racing", "nascar.cup"),
-#         "Wimbledon (Tennis)": ("tennis", "wimbledon"),
-#         "US Open (Tennis)": ("tennis", "usopen"),
-#         "Australian Open (Tennis)": ("tennis", "australianopen"),
-#         "French Open (Tennis)": ("tennis", "frenchopen"),
-#         "Masters (Golf)": ("golf", "masters"),
-#         "PGA Championship (Golf)": ("golf", "pga"),
-#         "US Open (Golf)": ("golf", "usopen"),
-#         "The Open Championship (Golf)": ("golf", "britishopen"),
-#     }
-#     selected_direct_league_name = st.sidebar.selectbox(
-#         "Choose ESPN League:",
-#         options=list(espn_direct_options.keys())
-#     )
-#     if selected_direct_league_name:
-#          selected_sport_slug, selected_league_slug = espn_direct_options[selected_direct_league_name]
-#          schedule_data = get_espn_schedule(selected_sport_slug, selected_league_slug) # Calls the direct API func
+#     st.markdown("**Selected Leagues:**")
+#     st.write(st.session_state.selected_leagues)
 
-# elif data_source == "TheSportsDB":
-#     st.sidebar.subheader("TheSportsDB Leagues")
-#     # ... (TheSportsDB selection logic remains the same) ...
-#     tsdb_league_options = { "NFL (USA)": "4391", "Premier League (Soccer)": "4328", "NBA (USA)": "4387", "MLB (USA)": "4424", "NHL (USA)": "4380" }
-#     selected_tsdb_league_name = st.sidebar.selectbox( "Choose TheSportsDB League:", options=list(tsdb_league_options.keys()) )
-#     selected_league_id = tsdb_league_options[selected_tsdb_league_name]
-#     current_year = datetime.date.today().year
-#     selected_season = st.sidebar.text_input("Enter Season (e.g., 2024):", value=str(current_year))
-#     if selected_league_id:
-#         if st.secrets.get("THESPORTSDB_API_KEY"): schedule_data = get_schedule_by_league(selected_league_id, selected_season)
-#         else: st.sidebar.error("API Key for TheSportsDB is missing in secrets.")
+# elif mode == "News Feed":
+#     st.header("📰 Your Custom News Feed")
+#     sel_leagues = st.session_state.selected_leagues
+#     if not sel_leagues:
+#         st.warning("Select some leagues in your Profile first to see news.")
+#     else:
+#         # Map selected leagues → sports
+#         selected_sports = {
+#             sport
+#             for sport, leagues in LEAGUES_BY_SPORT.items()
+#             if any(l in sel_leagues for l in leagues)
+#         } | {
+#             sport
+#             for sport, leagues in TSDB_LEAGUES_BY_SPORT.items()
+#             if any(l in sel_leagues for l in leagues)
+#         }
+
+#         # Gather RSS URLs for those sports
+#         urls = []
+#         for sport in selected_sports:
+#             feeds = available_feeds.get(sport, {})
+#             if isinstance(feeds, list):
+#                 urls.extend(f['url'] for f in feeds)
+#             else:
+#                 for lst in feeds.values():
+#                     urls.extend(f['url'] for f in lst)
+
+#         renderMultipleNewsFeeds(urls, max_items_per_feed=10)
+
+# else:  # Schedules
+#     st.header("📅 Sports Schedules")
+#     sel_leagues = st.session_state.selected_leagues
+#     if not sel_leagues:
+#         st.warning("Select some leagues in your Profile first to see schedules.")
+#     else:
+#         # Build lookups
+#         espn_lookup = {
+#             name: slugs
+#             for leagues in LEAGUES_BY_SPORT.values()
+#             for name, slugs in leagues.items()
+#         }
+#         tsdb_lookup = {
+#             name: lid
+#             for leagues in TSDB_LEAGUES_BY_SPORT.values()
+#             for name, lid in leagues.items()
+#         }
+
+#         selected_date = st.sidebar.date_input("Select a date", value=date.today())
+#         year_str = str(selected_date.year)
+
+#         all_events = []
+#         with st.spinner(f"Loading games for {selected_date}…"):
+#             for league_name in sel_leagues:
+#                 if league_name in espn_lookup:
+#         # ESPN events
+#                     s_slug, l_slug = espn_lookup[league_name]
+#                     evs = get_espn_scoreboard(s_slug, l_slug, selected_date)
+#                     for ev in evs:
+#                         ev["league_name"] = league_name
+#                         ev["league_id"]   = f"{s_slug}/{l_slug}"
+#                     all_events.extend(evs)
+
+#                 elif league_name in tsdb_lookup:
+#         # TSDB events by season
+#                     lid = tsdb_lookup[league_name]
+#                     evs = get_tsdb_schedule_by_season(lid, year_str)
+#                     for ev in evs:
+#                         ev["league_name"] = league_name
+#                         ev["league_id"]   = lid
+#                     all_events.extend(evs)
 
 
-# # --- Main Area - Display Schedule Calendar ---
-# renderScheduleCalendar(schedule_data)
+#         # Sort and render
+#         import datetime
 
-# app.py
-# app.py
-# app.py
+# # old:
+# # all_events.sort(key=lambda e: e.get("start_datetime") or datetime.datetime.min)
+
+# # new:
+#         def _event_ts(ev):
+#             dt = ev.get("start_datetime")
+#             if not dt:
+#                 return float("-inf")
+#     # if timezone‑aware, convert to UTC
+#             if dt.tzinfo is not None:
+#                 dt = dt.astimezone(datetime.timezone.utc)
+#     # timestamp works for both naive and aware
+#             return dt.timestamp()
+
+#         all_events.sort(key=_event_ts)
+
+#         if all_events:
+#             st.sidebar.success(f"Fetched {len(all_events)} games across selected leagues")
+#         else:
+#             st.sidebar.warning("No games on this date for any selected league.")
+
+#         renderScheduleCalendar(all_events, selected_date)
+
+
 # app.py
 import streamlit as st
-from datetime import date
+from datetime import date, timedelta
 from components.available_feeds import available_feeds
 from components.newsFeed import renderMultipleNewsFeeds
 from components.calendarView import renderScheduleCalendar
-from components.api_client import get_espn_scoreboard
+from components.api_client import get_espn_scoreboard, get_tsdb_schedule_by_season
 
-# --- Mapping of sports to their supported schedule leagues/slugs ---
+# --- Mapping of sports to their supported ESPN leagues/slugs ---
 LEAGUES_BY_SPORT = {
     "Basketball": {
-        "NBA":                          ("basketball", "nba"),
-        "WNBA":                         ("basketball", "wnba"),
-        "NCAAM (Men's College BBall)":  ("basketball", "mens-college-basketball"),
-        "NCAAW (Women's College BBall)":("basketball", "womens-college-basketball"),
+        "NBA": ("basketball", "nba"),
+        "WNBA": ("basketball", "wnba"),
+        "NCAAM (Men's College BBall)": ("basketball", "mens-college-basketball"),
+        "NCAAW (Women's College BBall)": ("basketball", "womens-college-basketball"),
     },
     "Football": {
-        "NFL":                          ("football",   "nfl"),
-        "NCAAF (College Football)":     ("football",   "college-football"),
+        "NFL": ("football", "nfl"),
+        "NCAAF (College Football)": ("football", "college-football"),
     },
     "Baseball": {
-        "MLB":                          ("baseball",   "mlb"),
+        "MLB": ("baseball", "mlb"),
     },
     "Hockey": {
-        "NHL":                          ("hockey",     "nhl"),
+        "NHL": ("hockey", "nhl"),
     },
     "Soccer": {
-        "MLS":                          ("soccer",     "usa.1"),
-        "Premier League":               ("soccer",     "eng.1"),
-        "La Liga":                      ("soccer",     "esp.1"),
-        "Bundesliga":                   ("soccer",     "ger.1"),
-        "Serie A":                      ("soccer",     "ita.1"),
-        "Ligue 1":                      ("soccer",     "fra.1"),
-        "Liga MX":                      ("soccer",     "mex.1"),
-        "Champions League":             ("soccer",     "uefa.champions"),
-        "Europa League":                ("soccer",     "uefa.europa"),
+        "MLS": ("soccer", "usa.1"),
+        "Premier League": ("soccer", "eng.1"),
+        "La Liga": ("soccer", "esp.1"),
+        "Bundesliga": ("soccer", "ger.1"),
+        "Serie A": ("soccer", "ita.1"),
+        "Ligue 1": ("soccer", "fra.1"),
+        "Liga MX": ("soccer", "mex.1"),
+        "Champions League": ("soccer", "uefa.champions"),
+        "Europa League": ("soccer", "uefa.europa"),
     },
     "Motorsports": {
-        "Formula 1":                    ("racing",     "f1"),
-        "NASCAR Cup Series":            ("racing",     "nascar.cup"),
+        "Formula 1": ("racing", "f1"),
+        "NASCAR Cup Series": ("racing", "nascar.cup"),
     },
     "Golf": {
-        "The Masters":                  ("golf",       "masters"),
-        "PGA Championship":             ("golf",       "pga"),
-        "US Open (Golf)":               ("golf",       "usopen"),
-        "The Open Championship":        ("golf",       "britishopen"),
+        "The Masters": ("golf", "masters"),
+        "PGA Championship": ("golf", "pga"),
+        "US Open (Golf)": ("golf", "usopen"),
+        "The Open Championship": ("golf", "britishopen"),
     },
     "Tennis": {
-        "Wimbledon":                    ("tennis",     "wimbledon"),
-        "US Open (Tennis)":             ("tennis",     "usopen"),
-        "Australian Open":              ("tennis",     "australianopen"),
-        "French Open":                  ("tennis",     "frenchopen"),
+        "Wimbledon": ("tennis", "wimbledon"),
+        "US Open (Tennis)": ("tennis", "usopen"),
+        "Australian Open": ("tennis", "australianopen"),
+        "French Open": ("tennis", "frenchopen"),
     },
+}
+
+# --- TSDB‐only leagues (free tier, ≤100 events/season) ---
+TSDB_LEAGUES_BY_SPORT = {
+    "Cycling": {
+        "UCI World Tour": "4465",
+        "UCI ProSeries": "5330",
+    },
+    # add more TSDB‐only sports here as needed…
 }
 
 # --- Streamlit page config ---
 st.set_page_config(layout="wide")
 st.title("🏟️ Sports Hub")
 
-# --- Session state for profile ---
-if 'selected_leagues' not in st.session_state:
+# --- Session state defaults ---
+if "selected_leagues" not in st.session_state:
     st.session_state.selected_leagues = []
+if "selected_date" not in st.session_state:
+    st.session_state.selected_date = date.today()
 
 # --- Sidebar navigation ---
 mode = st.sidebar.radio("Navigate to:", ["Profile", "News Feed", "Schedules"])
 
+# ————————————— PROFILE —————————————
 if mode == "Profile":
     st.header("👤 Your Profile: Choose Leagues")
     st.write("Check the leagues you follow:")
-    # Group by sport
+
+    # ESPN-backed leagues
     for sport, leagues in LEAGUES_BY_SPORT.items():
-        with st.expander(sport, expanded=True):
+        with st.expander(sport, expanded=False):
+            for league_name in leagues:
+                key = f"profile_{league_name}"
+                checked = league_name in st.session_state.selected_leagues
+                new_val = st.checkbox(league_name, value=checked, key=key)
+                if new_val and league_name not in st.session_state.selected_leagues:
+                    st.session_state.selected_leagues.append(league_name)
+                if not new_val and league_name in st.session_state.selected_leagues:
+                    st.session_state.selected_leagues.remove(league_name)
+
+    # TSDB-only leagues
+    for sport, leagues in TSDB_LEAGUES_BY_SPORT.items():
+        with st.expander(f"{sport} (via TheSportsDB)", expanded=False):
             for league_name in leagues:
                 key = f"profile_{league_name}"
                 checked = league_name in st.session_state.selected_leagues
@@ -224,64 +311,119 @@ if mode == "Profile":
     st.markdown("**Selected Leagues:**")
     st.write(st.session_state.selected_leagues)
 
+# ————————————— NEWS FEED —————————————
 elif mode == "News Feed":
     st.header("📰 Your Custom News Feed")
+
+    # Reload button
+    if st.sidebar.button("🔄 Reload News"):
+        st.cache_data.clear()
+        try:
+            st.experimental_rerun()
+        except AttributeError:
+            st.sidebar.info("Cache cleared. Refresh your browser to reload.")
 
     sel_leagues = st.session_state.selected_leagues
     if not sel_leagues:
         st.warning("Select some leagues in your Profile first to see news.")
     else:
-        # Map selected leagues back to sports
+        # Derive sports from selected leagues
         selected_sports = {
             sport
             for sport, leagues in LEAGUES_BY_SPORT.items()
             if any(l in sel_leagues for l in leagues)
+        } | {
+            sport
+            for sport, leagues in TSDB_LEAGUES_BY_SPORT.items()
+            if any(l in sel_leagues for l in leagues)
         }
 
-        # Gather all RSS URLs for those sports
+        # Gather RSS URLs
         urls = []
         for sport in selected_sports:
             feeds = available_feeds.get(sport, {})
             if isinstance(feeds, list):
-                urls.extend(feed['url'] for feed in feeds)
-            elif isinstance(feeds, dict):
-                for league_feeds in feeds.values():
-                    urls.extend(feed['url'] for feed in league_feeds)
+                urls.extend(f["url"] for f in feeds)
+            else:
+                for lst in feeds.values():
+                    urls.extend(f["url"] for f in lst)
 
         renderMultipleNewsFeeds(urls, max_items_per_feed=10)
 
-else:  # Schedules
+# ————————————— SCHEDULES —————————————
+else:
     st.header("📅 Sports Schedules")
+
+    # Prev/Today/Next buttons
+    prev_col, today_col, next_col = st.sidebar.columns([1, 1, 1])
+    if prev_col.button("← Prev"):
+        st.session_state.selected_date -= timedelta(days=1)
+    if today_col.button("• Today"):
+        st.session_state.selected_date = date.today()
+    if next_col.button("Next →"):
+        st.session_state.selected_date += timedelta(days=1)
+
+    # Date picker for far‑future jumps
+    st.sidebar.date_input(
+        "Jump to date:", value=st.session_state.selected_date, key="selected_date"
+    )
 
     sel_leagues = st.session_state.selected_leagues
     if not sel_leagues:
         st.warning("Select some leagues in your Profile first to see schedules.")
     else:
-        # Flatten league → slug lookup
-        league_lookup = {
+        # Build lookups
+        espn_lookup = {
             name: slugs
             for leagues in LEAGUES_BY_SPORT.values()
             for name, slugs in leagues.items()
         }
+        tsdb_lookup = {
+            name: lid
+            for leagues in TSDB_LEAGUES_BY_SPORT.values()
+            for name, lid in leagues.items()
+        }
 
-        selected_date = st.sidebar.date_input("Select a date", value=date.today())
-
-        schedule_data = []
-        with st.spinner(f"Loading games for {selected_date}…"):
+        # Fetch and merge events
+        all_events = []
+        with st.spinner(f"Loading games for {st.session_state.selected_date}…"):
+            year_str = str(st.session_state.selected_date.year)
             for league_name in sel_leagues:
-                sport_slug, league_slug = league_lookup[league_name]
-                games = get_espn_scoreboard(sport_slug, league_slug, selected_date)
-                for ev in games:
-                    ev["league_name"] = league_name
-                schedule_data.extend(games)
+                if league_name in espn_lookup:
+                    s_slug, l_slug = espn_lookup[league_name]
+                    evs = get_espn_scoreboard(
+                        s_slug, l_slug, st.session_state.selected_date
+                    )
+                    for ev in evs:
+                        ev["league_name"] = league_name
+                    all_events.extend(evs)
+                elif league_name in tsdb_lookup:
+                    lid = tsdb_lookup[league_name]
+                    evs = get_tsdb_schedule_by_season(lid, year_str)
+                    for ev in evs:
+                        ev["league_name"] = league_name
+                    all_events.extend(evs)
 
-        # Sort by kickoff
-        import datetime
-        schedule_data.sort(key=lambda x: x.get("start_datetime") or datetime.datetime.min)
+        # Sort by timestamp to avoid tz-naive/aware issues
+        import datetime as _dt
 
-        if schedule_data:
-            st.sidebar.success(f"Fetched {len(schedule_data)} games across {len(sel_leagues)} leagues")
+        def _event_ts(ev):
+            dt = ev.get("start_datetime")
+            if not dt:
+                return float("-inf")
+            if hasattr(dt, "tzinfo") and dt.tzinfo:
+                dt = dt.astimezone(_dt.timezone.utc).replace(tzinfo=None)
+            return dt.timestamp() if isinstance(dt, _dt.datetime) else float("-inf")
+
+        all_events.sort(key=_event_ts)
+
+        # Sidebar status
+        if all_events:
+            st.sidebar.success(
+                f"Fetched {len(all_events)} games across selected leagues"
+            )
         else:
             st.sidebar.warning("No games on this date for any selected league.")
 
-        renderScheduleCalendar(schedule_data, selected_date)
+        # Render calendar
+        renderScheduleCalendar(all_events, st.session_state.selected_date)
