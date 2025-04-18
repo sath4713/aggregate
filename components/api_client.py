@@ -1,162 +1,3 @@
-# import streamlit as st
-# import requests
-# import logging
-# import datetime
-# from dateutil import parser
-
-# # ————————————————————————————————
-# # ESPN Scoreboard Fetcher (per-date), now with TV network info
-# # ————————————————————————————————
-# @st.cache_data(ttl=300)
-# def get_espn_scoreboard(sport: str, league: str, dt: datetime.date) -> list[dict]:
-#     """
-#     Fetches games on a specific date from ESPN's V2 scoreboard endpoint,
-#     and normalizes them, including the primary broadcast network.
-#     """
-#     date_str = dt.strftime("%Y%m%d")
-#     url = (
-#         f"https://site.api.espn.com/apis/site/v2/sports/"
-#         f"{sport}/{league}/scoreboard?dates={date_str}"
-#     )
-#     try:
-#         resp = requests.get(url, timeout=5)
-#         resp.raise_for_status()
-#         data = resp.json()
-#     except Exception as e:
-#         logging.error(f"ESPN scoreboard fetch failed: {e}", exc_info=True)
-#         return []
-
-#     events = data.get("events", [])
-#     out = []
-#     for ev in events:
-#         comp = ev.get("competitions", [{}])[0]
-
-#         # parse UTC datetime
-#         try:
-#             dt_obj = parser.parse(ev.get("date"))
-#         except Exception:
-#             dt_obj = None
-
-#         # teams
-#         competitors = comp.get("competitors", [])
-#         home = next((c for c in competitors if c.get("homeAway") == "home"), {})
-#         away = next((c for c in competitors if c.get("homeAway") == "away"), {})
-
-#         # status & result
-#         stype = comp.get("status", {}).get("type", {})
-#         status = stype.get("shortDetail", "Scheduled")
-#         result = None
-#         if "Final" in status or stype.get("completed"):
-#             hs = home.get("score"); as_ = away.get("score")
-#             if hs is not None and as_ is not None:
-#                 result = f"{hs} – {as_}"
-
-#         # venue
-#         venue = comp.get("venue", {}).get("fullName", "")
-
-#         # primary broadcast network
-#         broadcasts = comp.get("broadcasts", [])
-#         network = None
-#         if broadcasts:
-#             bc = broadcasts[0]
-#             network = (
-#                 bc.get("callLetters")
-#                 or bc.get("media", {}).get("callLetters")
-#                 or bc.get("name")
-#                 or bc.get("shortName")
-#             )
-
-#         # link
-#         link = (ev.get("links") or [{}])[0].get("href", "")
-
-#         out.append({
-#             "id":             ev.get("id"),
-#             "home_team":      home.get("team", {}).get("displayName", "TBD"),
-#             "away_team":      away.get("team", {}).get("displayName", "TBD"),
-#             "start_datetime": dt_obj,
-#             "venue":          venue,
-#             "status":         status,
-#             "result":         result,
-#             "network":        network,
-#             "league_name":    league.upper(),
-#             "league_id":      f"{sport}/{league}",
-#             "url":            link,
-#         })
-
-#     # sort chronologically
-#     out.sort(key=lambda x: x["start_datetime"] or datetime.datetime.min)
-#     return out
-
-
-# # ————————————————————————————————
-# # TheSportsDB Season Fetcher (≤100 events/season)
-# # ————————————————————————————————
-# @st.cache_data(ttl=1800)
-# def get_tsdb_schedule_by_season(league_id: str, season: str) -> list[dict]:
-#     """
-#     Fetches every event for a TSDB league-season via /eventsseason.php (free tier).
-#     Falls back to the test key "3" if no secret is provided.
-#     """
-#     try:
-#         api_key = st.secrets["THESPORTSDB_API_KEY"]
-#     except Exception:
-#         api_key = "3"
-
-#     url = (
-#         f"https://www.thesportsdb.com/api/v1/json/{api_key}"
-#         f"/eventsseason.php?id={league_id}&s={season}"
-#     )
-#     try:
-#         resp = requests.get(url, timeout=10)
-#         resp.raise_for_status()
-#         data = resp.json() or {}
-#     except Exception as e:
-#         logging.error(f"TSDB season fetch failed for {league_id}/{season}: {e}", exc_info=True)
-#         return []
-
-#     out = []
-#     for ev in data.get("events") or []:
-#         # parse date + time
-#         dt_obj = None
-#         date_str = ev.get("dateEvent")
-#         time_str = ev.get("strTime") or "00:00:00"
-#         if date_str:
-#             try:
-#                 dt_obj = parser.parse(f"{date_str} {time_str}")
-#             except Exception:
-#                 pass
-
-#         title = ev.get("strEvent")
-#         home  = ev.get("strHomeTeam")
-#         away  = ev.get("strAwayTeam")
-#         # for single-event leagues, clear home/away
-#         if not home and not away:
-#             home = away = None
-
-#         hs = ev.get("intHomeScore"); as_ = ev.get("intAwayScore")
-#         result = f"{hs} – {as_}" if hs is not None and as_ is not None else None
-#         venue = ev.get("strVenue", "")
-
-#         out.append({
-#             "id":             ev.get("idEvent"),
-#             "title":          title,
-#             "home_team":      home,
-#             "away_team":      away,
-#             "start_datetime": dt_obj,
-#             "venue":          venue,
-#             "status":         ev.get("strStatus", "Scheduled"),
-#             "result":         result,
-#             "network":        None,               # TSDB has no broadcast info
-#             "league_name":    None,               # added later in app.py
-#             "league_id":      league_id,          # TSDB league ID
-#             "url":            ev.get("strVideo", ""),
-#         })
-
-#     # sort by kickoff
-#     out.sort(key=lambda x: x["start_datetime"] or datetime.datetime.min)
-#     return out
-
-
 # components/api_client.py
 
 import streamlit as st
@@ -164,26 +5,19 @@ import requests
 import logging
 import datetime as _dt
 from dateutil import parser
-
-# ————————————————————————————————
-# Try to import the WorldAthletics GraphQL wrapper
-# ————————————————————————————————
-
-try:
-    from worldathletics import WorldAthletics
-
-    WA_AVAILABLE = True
-    _wa_client = WorldAthletics()
-except ImportError:
-    WA_AVAILABLE = False
+from bs4 import BeautifulSoup
+import re
 
 
 # ————————————————————————————————
 # ESPN Scoreboard Fetcher
 # ————————————————————————————————
 @st.cache_data(ttl=300)
-def get_espn_scoreboard(sport: str, league: str, dt: _dt.date) -> list[dict]:
-    date_str = dt.strftime("%Y%m%d")
+def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict]:
+    """
+    Fetches schedule/scoreboard data from ESPN's V2 API for a given date.
+    """
+    date_str = dt_date.strftime("%Y%m%d")
     url = (
         f"https://site.api.espn.com/apis/site/v2/sports/"
         f"{sport}/{league}/scoreboard?dates={date_str}"
@@ -193,7 +27,9 @@ def get_espn_scoreboard(sport: str, league: str, dt: _dt.date) -> list[dict]:
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        logging.error(f"ESPN scoreboard fetch failed: {e}", exc_info=True)
+        logging.error(
+            f"ESPN fetch failed ({sport}/{league}@{date_str}): {e}", exc_info=True
+        )
         return []
 
     out = []
@@ -215,18 +51,18 @@ def get_espn_scoreboard(sport: str, league: str, dt: _dt.date) -> list[dict]:
         stype = comp.get("status", {}).get("type", {})
         status = stype.get("shortDetail", "Scheduled")
         result = None
-        if "Final" in status or stype.get("completed"):
+        if stype.get("completed") or "Final" in status:
             hs = home.get("score")
             as_ = away.get("score")
             if hs is not None and as_ is not None:
-                result = f"{hs} – {as_}"
+                result = f"{hs} – {as_}"
 
         # venue
         venue = comp.get("venue", {}).get("fullName", "")
 
         # primary broadcast network
-        broadcasts = comp.get("broadcasts", [])
         network = None
+        broadcasts = comp.get("broadcasts", [])
         if broadcasts:
             bc = broadcasts[0]
             network = (
@@ -260,133 +96,157 @@ def get_espn_scoreboard(sport: str, league: str, dt: _dt.date) -> list[dict]:
 
 
 # ————————————————————————————————
-# TheSportsDB Season Fetcher
+# ProCyclingStats Helpers & Scrapers
 # ————————————————————————————————
-@st.cache_data(ttl=1800)
-def get_tsdb_schedule_by_season(league_id: str, season: str) -> list[dict]:
-    try:
-        api_key = st.secrets["THESPORTSDB_API_KEY"]
-    except Exception:
-        api_key = "3"
 
-    url = (
-        f"https://www.thesportsdb.com/api/v1/json/{api_key}"
-        f"/eventsseason.php?id={league_id}&s={season}"
+PCS_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/112.0.0.0 Safari/537.36"
     )
+}
+
+
+def _parse_pcs_date(cell_text: str, year: int) -> _dt.date | None:
+    """
+    Extract first DD.MM from 'DD.MM – DD.MM' or 'DD.MM' and return date(year, month, day).
+    """
+    part = re.split(r"[–-]", cell_text)[0].strip()
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})$", part)
+    if not m:
+        return None
+    d, mth = int(m.group(1)), int(m.group(2))
     try:
-        resp = requests.get(url, timeout=10)
+        return _dt.date(year, mth, d)
+    except ValueError:
+        return None
+
+
+def _find_pcs_races_table(soup: BeautifulSoup) -> BeautifulSoup | None:
+    """
+    Locate the PCS races table by matching the header row: th texts include 'Date' + 'Race'.
+    """
+    for tbl in soup.find_all("table"):
+        headers = [th.get_text(strip=True).lower() for th in tbl.select("thead th")]
+        if "date" in headers and ("race" in headers or "name" in headers):
+            return tbl
+    return None
+
+
+@st.cache_data(ttl=300)
+def get_pcs_events_by_day(day: _dt.date, classification: str) -> list[dict]:
+    """
+    Scrapes PCS for UCI events of a given class on a specific day.
+    """
+    url = f"https://www.procyclingstats.com/races.php?class={classification}&year={day.year}"
+    try:
+        resp = requests.get(url, headers=PCS_HEADERS, timeout=10)
         resp.raise_for_status()
-        data = resp.json() or {}
     except Exception as e:
         logging.error(
-            f"TSDB season fetch failed for {league_id}/{season}: {e}", exc_info=True
+            f"PCS day fetch failed ({classification} {day.year}): {e}", exc_info=True
         )
         return []
 
-    out = []
-    for ev in data.get("events") or []:
-        # parse date + time
-        dt_obj = None
-        date_str = ev.get("dateEvent")
-        time_str = ev.get("strTime") or "00:00:00"
-        if date_str:
-            try:
-                dt_obj = parser.parse(f"{date_str} {time_str}")
-            except Exception:
-                pass
-
-        title = ev.get("strEvent")
-        home = ev.get("strHomeTeam")
-        away = ev.get("strAwayTeam")
-        if not home and not away:
-            home = away = None
-
-        hs = ev.get("intHomeScore")
-        as_ = ev.get("intAwayScore")
-        result = f"{hs} – {as_}" if hs is not None and as_ is not None else None
-        venue = ev.get("strVenue", "")
-
-        out.append(
-            {
-                "id": ev.get("idEvent"),
-                "title": title,
-                "home_team": home,
-                "away_team": away,
-                "start_datetime": dt_obj,
-                "venue": venue,
-                "status": ev.get("strStatus", "Scheduled"),
-                "result": result,
-                "network": None,
-                "league_name": None,
-                "league_id": league_id,
-                "url": ev.get("strVideo", ""),
-            }
-        )
-
-    out.sort(key=lambda x: x["start_datetime"] or datetime.datetime.min)
-    return out
-
-
-# ————————————————————————————————
-# World Athletics GraphQL Fetcher
-# ————————————————————————————————
-# In components/api_client.py, replace your existing get_wa_competition_events(...) with:
-
-
-@st.cache_data(ttl=1800)
-def get_wa_competition_events(competition_id: int) -> list[dict]:
-    """
-    Fetches upcoming events for a World Athletics competition via GraphQL,
-    using the get_calendar_events(...) wrapper and the generated Pydantic models.
-    """
-    if not WA_AVAILABLE:
-        st.error("worldathletics package not installed.")
+    soup = BeautifulSoup(resp.text, "html.parser")
+    table = _find_pcs_races_table(soup)
+    if not table:
+        logging.warning("PCS: couldn't find races table by header-match")
         return []
 
-    try:
-        # this returns a GetCalendarEvents Pydantic model
-        gql_response = _wa_client.get_calendar_events(competition_id)
-    except Exception as e:
-        st.error(f"WA fetch failed for competition {competition_id}: {e}")
-        return []
-
-    # gql_response.get_calendar_events is the inner model
-    cal = getattr(gql_response, "get_calendar_events", None)
-    if not cal or not getattr(cal, "results", None):
-        # no results field or empty
-        return []
-
-    out = []
-    for item in cal.results or []:
-        if item is None:
+    events = []
+    for row in table.select("tbody tr"):
+        cols = row.find_all("td")
+        if len(cols) < 3:
             continue
 
-        # item is a GetCalendarEventsGetCalendarEventsResults
-        # its fields: id, name, venue, start_date, etc.
-        start_dt = None
-        if item.start_date:
-            try:
-                start_dt = _dt.datetime.fromisoformat(item.start_date)
-            except Exception:
-                pass
+        race_date = _parse_pcs_date(cols[0].get_text(strip=True), day.year)
+        if race_date != day:
+            continue
 
-        out.append(
+        link_tag = cols[2].find("a")
+        if not link_tag:
+            continue
+        title = link_tag.get_text(strip=True)
+        href = link_tag["href"]
+
+        events.append(
             {
-                "id": item.id,
-                "title": item.name,
+                "id": None,
+                "title": title,
                 "home_team": None,
                 "away_team": None,
-                "start_datetime": start_dt,
-                "venue": item.venue or "",
+                "start_datetime": _dt.datetime.combine(day, _dt.time.min),
+                "venue": "",
                 "status": "Scheduled",
                 "result": None,
                 "network": None,
-                "league_name": None,  # set later in app.py
-                "league_id": competition_id,
-                "url": item.was_url or "",
+                "league_name": classification.upper(),
+                "league_id": classification,
+                "url": f"https://www.procyclingstats.com{href}",
             }
         )
 
-    # sort by start_datetime
-    out.sort(key=lambda x: x["start_datetime"] or _dt.datetime.min)
-    return out
+    return events
+
+
+@st.cache_data(ttl=1800)
+def get_pcs_season_events(classification: str, year: int) -> list[dict]:
+    """
+    Scrapes the full PCS calendar for the given UCI classification & year.
+    """
+    url = (
+        f"https://www.procyclingstats.com/races.php?class={classification}&year={year}"
+    )
+    try:
+        resp = requests.get(url, headers=PCS_HEADERS, timeout=10)
+        resp.raise_for_status()
+    except Exception as e:
+        logging.error(
+            f"PCS season fetch failed ({classification} {year}): {e}", exc_info=True
+        )
+        return []
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    table = _find_pcs_races_table(soup)
+    if not table:
+        logging.warning("PCS: couldn't find races table by header-match")
+        return []
+
+    events = []
+    for row in table.select("tbody tr"):
+        cols = row.find_all("td")
+        if len(cols) < 3:
+            continue
+
+        race_date = _parse_pcs_date(cols[0].get_text(strip=True), year)
+        if not race_date:
+            continue
+
+        link_tag = cols[2].find("a")
+        if not link_tag:
+            continue
+        title = link_tag.get_text(strip=True)
+        href = link_tag["href"]
+
+        events.append(
+            {
+                "id": None,
+                "title": title,
+                "home_team": None,
+                "away_team": None,
+                "start_datetime": _dt.datetime.combine(race_date, _dt.time.min),
+                "venue": "",
+                "status": "Scheduled",
+                "result": None,
+                "network": None,
+                "league_name": classification.upper(),
+                "league_id": classification,
+                "url": f"https://www.procyclingstats.com{href}",
+            }
+        )
+
+    # sort by date
+    events.sort(key=lambda e: e["start_datetime"])
+    return events
