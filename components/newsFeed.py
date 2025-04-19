@@ -1,10 +1,10 @@
-# components/newsFeed.py
 import streamlit as st
 import requests
 import feedparser
 import datetime
 import logging
 from .available_feeds import get_feed_name_from_url
+
 
 # 1) Cache only the raw feed text
 @st.cache_data(ttl=600)
@@ -39,6 +39,7 @@ def fetch_feed_text(feed_url: str) -> str | None:
         logging.error(f"Error fetching {feed_url}: {e}", exc_info=True)
         return None
 
+
 def renderMultipleNewsFeeds(selected_urls: list, max_items_per_feed: int = 10):
     """
     Fetches, combines, sorts, and renders news items from the selected RSS URLs.
@@ -67,33 +68,32 @@ def renderMultipleNewsFeeds(selected_urls: list, max_items_per_feed: int = 10):
 
             feed_name = get_feed_name_from_url(url) or url
             for entry in feed.entries[:max_items_per_feed]:
-                # Build a plain dict of only the fields we need
                 published_dt = None
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                if getattr(entry, "published_parsed", None):
                     try:
                         published_dt = datetime.datetime(*entry.published_parsed[:6])
                     except Exception:
-                        published_dt = None
+                        pass
 
-                all_entries.append({
-                    'title':              entry.get('title', 'No title'),
-                    'link':               entry.get('link'),
-                    'summary':            entry.get('summary', ''),
-                    'media_thumbnail':    getattr(entry, 'media_thumbnail', None),
-                    'links':              entry.get('links', []),
-                    'published':          entry.get('published', ''),
-                    'published_datetime': published_dt,
-                    'source_name':        feed_name,
-                    'source_url':         url
-                })
+                all_entries.append(
+                    {
+                        "title": entry.get("title", "No title"),
+                        "link": entry.get("link"),
+                        "summary": entry.get("summary", ""),
+                        "media_thumbnail": getattr(entry, "media_thumbnail", None),
+                        "links": entry.get("links", []),
+                        "published": entry.get("published", ""),
+                        "published_datetime": published_dt,
+                        "source_name": feed_name,
+                        "source_url": url,
+                    }
+                )
 
-    # Sort by published_datetime (desc), putting undated entries last
+    # Sort by published_datetime (desc), undated last
     all_entries.sort(
-        key=lambda e: e.get('published_datetime') or datetime.datetime.min,
-        reverse=True
+        key=lambda e: e.get("published_datetime") or datetime.datetime.min, reverse=True
     )
 
-    # Render
     if not all_entries:
         st.warning("No news items found from your selected leagues.")
         if errors:
@@ -102,42 +102,35 @@ def renderMultipleNewsFeeds(selected_urls: list, max_items_per_feed: int = 10):
                 st.caption(f"- {get_feed_name_from_url(url) or url}: {msg}")
         return
 
-    st.write(f"Showing the latest combined articles:")
     for entry in all_entries:
-        title = entry['title']
-        link  = entry['link']
-        if link:
-            st.markdown(f"### [{title}]({link})")
-        else:
-            st.markdown(f"### {title}")
+        title, link = entry["title"], entry["link"]
+        st.markdown(f"### [{title}]({link})" if link else f"### {title}")
 
         # Image
         img_url = None
-        if entry['media_thumbnail']:
-            img_url = entry['media_thumbnail'][0].get('url')
+        if entry["media_thumbnail"]:
+            img_url = entry["media_thumbnail"][0].get("url")
         else:
-            for l in entry['links']:
-                if 'image' in l.get('type',''):
-                    img_url = l.get('href')
+            for l in entry["links"]:
+                if "image" in l.get("type", ""):
+                    img_url = l.get("href")
                     break
         if img_url:
             st.image(img_url, width=500)
 
         # Summary
-        if entry['summary']:
-            st.markdown(entry['summary'], unsafe_allow_html=True)
+        if entry["summary"]:
+            st.markdown(entry["summary"], unsafe_allow_html=True)
 
         # Date & Source
-        pub_str = "Date n/a"
-        if entry['published_datetime']:
-            pub_str = entry['published_datetime'].strftime('%a, %d %b %Y %H:%M')
-        elif entry['published']:
-            pub_str = entry['published']
+        pub_str = (
+            entry["published_datetime"].strftime("%a, %d %b %Y %H:%M")
+            if entry["published_datetime"]
+            else entry["published"] or "Date n/a"
+        )
         st.write(f"*Source: {entry['source_name']} | Published: {pub_str}*")
-
         st.markdown("---")
 
-    # Sidebar errors
     if errors:
         st.sidebar.error("Some feeds failed:")
         for url, msg in errors.items():
