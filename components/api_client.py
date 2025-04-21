@@ -2,8 +2,9 @@ import streamlit as st
 import requests
 import logging
 import datetime as _dt
-from dateutil import parser
+import re
 from bs4 import BeautifulSoup
+from dateutil import parser
 from playwright.sync_api import sync_playwright
 
 
@@ -26,22 +27,16 @@ def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict
             f"ESPN fetch failed ({sport}/{league}@{date_str}): {e}", exc_info=True
         )
         return []
-
     out = []
     for ev in data.get("events", []):
         comp = ev.get("competitions", [{}])[0]
-        # parse UTC datetime
         try:
             dt_obj = parser.parse(ev.get("date"))
         except Exception:
             dt_obj = None
-
-        # teams
         comps = comp.get("competitors", [])
         home = next((c for c in comps if c.get("homeAway") == "home"), {})
         away = next((c for c in comps if c.get("homeAway") == "away"), {})
-
-        # status & result
         stype = comp.get("status", {}).get("type", {})
         status = stype.get("shortDetail", "Scheduled")
         result = None
@@ -49,7 +44,6 @@ def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict
             hs, as_ = home.get("score"), away.get("score")
             if hs is not None and as_ is not None:
                 result = f"{hs} – {as_}"
-
         out.append(
             {
                 "id": ev.get("id"),
@@ -65,22 +59,17 @@ def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict
                 "url": (ev.get("links") or [{}])[0].get("href", ""),
             }
         )
-
     out.sort(key=lambda x: x["start_datetime"] or _dt.datetime.min)
     return out
 
 
 # ——————————————
-# ProCyclingStats via Playwright (season cache + day filter)
+# ProCyclingStats via Playwright (unchanged)
 # ——————————————
-CIRCUIT_IDS = {
-    "1.uwt": 1,  # UCI WorldTour
-    "2.pro": 26,  # UCI ProSeries
-}
+CIRCUIT_IDS = {"1.uwt": 1, "2.pro": 26}
 
 
 def _parse_pcs_date(cell_text: str, year: int) -> _dt.date | None:
-    # take first “DD.MM” from “DD.MM – DD.MM”
     part = cell_text.split("–", 1)[0].strip()
     try:
         d, m = map(int, part.split("."))
@@ -91,83 +80,205 @@ def _parse_pcs_date(cell_text: str, year: int) -> _dt.date | None:
 
 @st.cache_data(ttl=24 * 3600)
 def get_pcs_season_events(classification: str, year: int) -> list[dict]:
-    """
-    Scrape the full season for a given PCS classification (e.g. "1.uwt")
-    and cache it for 24h.
-    """
     circuit = CIRCUIT_IDS.get(classification)
     if circuit is None:
         logging.error("Unknown PCS classification %r", classification)
         return []
-
-    url = f"https://www.procyclingstats.com/races.php?year={year}&circuit={circuit}&class=&filter=Filter"
-    logging.debug("PCS season scrape → %s", url)
-
+    url = (
+        f"https://www.procyclingstats.com/races.php?"
+        f"year={year}&circuit={circuit}&class=&filter=Filter"
+    )
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        page = browser.new_page(
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/100.0.4896.127 Safari/537.36"
-            )
-        )
-        # only wait for table BASIC to appear
+        page = browser.new_page(user_agent="Mozilla/5.0")
         page.goto(url, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_selector("table.basic tbody tr", timeout=30000)
         html = page.content()
         browser.close()
-
     soup = BeautifulSoup(html, "html.parser")
     table = soup.select_one("table.basic")
     if not table:
         logging.error("PCS: cannot find races table on %s", url)
         return []
-
     events = []
     for row in table.tbody.find_all("tr"):
         cols = row.find_all("td")
         if len(cols) < 3:
             continue
         race_date = _parse_pcs_date(cols[0].get_text(strip=True), year)
-        name_cell = cols[2]
-        link = name_cell.find("a")
-        title = link.get_text(strip=True) if link else name_cell.get_text(strip=True)
-        href = link["href"] if link else ""
-        # build a datetime at midnight UTC
+        link = cols[2].find("a")
+        title = link.get_text(strip=True) if link else cols[2].get_text(strip=True)
         dt_obj = _dt.datetime.combine(race_date, _dt.time.min) if race_date else None
-
         events.append(
             {
                 "id": None,
                 "title": title,
-                "home_team": None,
-                "away_team": None,
                 "start_datetime": dt_obj,
-                "venue": "",
-                "status": "Scheduled",
-                "result": None,
-                "network": None,
                 "league_name": classification.upper(),
                 "league_id": classification,
-                "url": f"https://www.procyclingstats.com{href}",
+                "url": f"https://www.procyclingstats.com{link['href']}" if link else "",
             }
         )
-
-    # already sorted by appearance, but let's be sure:
     events.sort(key=lambda e: e["start_datetime"] or _dt.datetime.min)
     return events
 
 
 @st.cache_data(ttl=3600)
 def get_pcs_events_by_day(day: _dt.date, classification: str) -> list[dict]:
-    """
-    Return only those season events whose date == `day`.
-    """
-    season = get_pcs_season_events(classification, day.year)
+    return [
+        e
+        for e in get_pcs_season_events(classification, day.year)
+        if e["start_datetime"] and e["start_datetime"].date() == day
+    ]
+
+
+# ——————————————
+# Diamond League by‑day (PCS‑style)
+# ——————————————
+@st.cache_data(ttl=24 * 3600)
+def get_diamond_league_events_by_day(day: _dt.date) -> list[dict]:
+    base_url = "https://www.diamondleague.com"
+    resp = requests.get(f"{base_url}/calendar/", timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    heading = next(
+        (
+            h2
+            for h2 in soup.find_all("h2")
+            if h2.get_text(strip=True) == f"Calendar {day.year}"
+        ),
+        None,
+    )
+    if not heading:
+        return []
+
     out = []
-    for e in season:
-        dt_obj = e.get("start_datetime")
-        if dt_obj and dt_obj.date() == day:
-            out.append(e.copy())
+    for sib in heading.find_next_siblings():
+        if sib.name == "h2":
+            break
+        for a in sib.find_all("a", href=True):
+            text = a.get_text(" ", strip=True)
+            date_matches = list(re.finditer(r"\d{1,2}\s\w+", text))
+            if len(date_matches) < 2:
+                continue
+            second = date_matches[1]
+            try:
+                ev_date = _dt.datetime.strptime(
+                    f"{second.group(0)} {day.year}", "%d %B %Y"
+                ).date()
+            except ValueError:
+                continue
+            if ev_date != day:
+                continue
+            rest = text[second.end() :]
+            m = re.match(r"\s*([^(]+)", rest)
+            title = m.group(1).strip() if m else text
+            href = a["href"]
+            url = href if href.startswith("http") else base_url + href
+            out.append(
+                {
+                    "id": None,
+                    "title": title,
+                    "start_datetime": _dt.datetime.combine(day, _dt.time.min),
+                    "league_name": "Diamond League",
+                    "league_id": "diamond-league",
+                    "url": url,
+                }
+            )
     return out
+
+
+# ——————————————
+# World Marathon Majors by‑day (PCS‑style)
+# ——————————————
+@st.cache_data(ttl=3600)
+def get_marathon_majors_by_day(day: _dt.date) -> list[dict]:
+    url = "https://en.wikipedia.org/wiki/World_Marathon_Majors"
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+    except:
+        return []
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    table = soup.find("table", {"class": "wikitable"})
+    if not table:
+        return []
+
+    headers = [th.get_text(strip=True) for th in table.find("tr").find_all("th")]
+    row = next(
+        (
+            r
+            for r in table.find_all("tr")[1:]
+            if (td := r.find("td")) and td.get_text(strip=True) == str(day.year)
+        ),
+        None,
+    )
+    if not row:
+        return []
+
+    out = []
+    cells = row.find_all("td")
+    for city, cell in zip(headers[1:7], cells[1:7]):
+        date_txt = cell.get_text(strip=True)
+        try:
+            ev_date = _dt.datetime.strptime(f"{date_txt} {day.year}", "%d %B %Y").date()
+        except ValueError:
+            continue
+        if ev_date != day:
+            continue
+        out.append(
+            {
+                "id": None,
+                "title": f"{city} Marathon",
+                "start_datetime": _dt.datetime.combine(day, _dt.time.min),
+                "league_name": "World Marathon Majors",
+                "league_id": "world-marathon-majors",
+                "url": None,
+            }
+        )
+    return out
+
+
+# ——————————————
+# World Athletics Championships by‑day (PCS‑style)
+# ——————————————
+@st.cache_data(ttl=3600)
+def get_wa_champs_by_day(day: _dt.date) -> list[dict]:
+    url = f"https://en.wikipedia.org/wiki/{day.year}_World_Athletics_Championships"
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+    except:
+        return []
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    date_text = None
+    for tr in soup.select("table.infobox tr"):
+        if tr.th and tr.th.get_text(strip=True) == "Dates":
+            date_text = tr.td.get_text(strip=True)
+            break
+    if not date_text:
+        return []
+
+    m = re.match(r"(\d{1,2})[–-](\d{1,2})\s+(\w+)\s+(\d{4})", date_text)
+    if not m:
+        return []
+    sd, ed, mon, yr = m.groups()
+    start = _dt.datetime.strptime(f"{sd} {mon} {yr}", "%d %B %Y").date()
+    end = _dt.datetime.strptime(f"{ed} {mon} {yr}", "%d %B %Y").date()
+
+    if not (start <= day <= end):
+        return []
+
+    return [
+        {
+            "id": None,
+            "title": f"World Athletics Championships ({yr})",
+            "start_datetime": _dt.datetime.combine(day, _dt.time.min),
+            "league_name": "World Athletics Championships",
+            "league_id": "world-athletics-championships",
+            "url": url,
+        }
+    ]
