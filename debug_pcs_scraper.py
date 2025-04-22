@@ -1,84 +1,32 @@
-from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup
-import logging
-
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s %(levelname)s — %(message)s"
-)
-
-BASE_URL = "https://www.procyclingstats.com/races.php"
+# #!/usr/bin/env python3
+# """
+# Quick test script to verify that Tour of the Alps appears on each day of its ProSeries date range.
+# """
+# from components.api_client import get_pcs_season_events
 
 
-def fetch_events(year: int, circuit: int) -> list:
-    """
-    Fetch all races for a given year & circuit‑ID by rendering the page with Playwright
-      • circuit=1  → UCI WorldTour
-      • circuit=26 → UCI ProSeries
-    """
-    url = f"{BASE_URL}" f"?year={year}&circuit={circuit}&class=&filter=Filter"
+# def main():
+#     # Fetch all UCI ProSeries races for 2025
+#     events = get_pcs_season_events("2.pro", 2025)
 
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        page = browser.new_page(
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/100.0.4896.127 Safari/537.36"
-            )
-        )
-        logging.debug(f"→ Navigating to {url}")
-        page.goto(url)
-        # wait for that <table class="basic"> to appear
-        page.wait_for_selector("table.basic", timeout=15_000)
-        html = page.content()
-        browser.close()
+#     # Filter for Tour of the Alps
+#     alps = [e for e in events if "Alps" in e.get("title", "")]
 
-    soup = BeautifulSoup(html, "html.parser")
-    table = soup.find("table", class_="basic")
-    if not table:
-        # dump a snippet so you can debug if it ever changes again
-        snippet = html[:500].replace("\n", " ")
-        raise RuntimeError(
-            f'No <table class="basic"> found! Page snippet:\n{snippet!r}'
-        )
-
-    events = []
-    for row in table.tbody.find_all("tr"):
-        cols = row.find_all("td")
-        if len(cols) < 5:
-            continue
-        date_cell = cols[0].get_text(strip=True)
-        name_cell = cols[2]
-        link_tag = name_cell.find("a")
-        category = cols[4].get_text(strip=True)
-
-        events.append(
-            {
-                "date": date_cell,
-                "name": (
-                    link_tag.get_text(strip=True)
-                    if link_tag
-                    else name_cell.get_text(strip=True)
-                ),
-                "link": link_tag["href"] if link_tag else None,
-                "category": category,
-            }
-        )
-
-    return events
+#     print(f"Found {len(alps)} entries for Tour of the Alps:\n")
+#     for e in alps:
+#         dt = e.get("start_datetime")
+#         # dt should be a datetime.datetime
+#         date_only = dt.strftime("%Y-%m-%d") if dt else "None"
+#         print(f"  • {e.get('title')} — {date_only} ({dt})")
 
 
-if __name__ == "__main__":
-    YEAR = 2025
-    CIRCUITS = {"WorldTour": 1, "ProSeries": 26}
+# if __name__ == "__main__":
+#     main()
 
-    all_events = {}
-    for label, cid in CIRCUITS.items():
-        evs = fetch_events(YEAR, cid)
-        logging.info(f"→ Fetched {len(evs)} {label} races")
-        all_events[label] = evs
+from components.api_client import get_pcs_events_by_day
+from datetime import date
 
-    for label, evs in all_events.items():
-        print(f"\n{label} races ({len(evs)}):")
-        for e in evs:
-            print(f" • {e['date']} — {e['name']} ({e['category']})")
+evs = get_pcs_events_by_day(date(2025, 4, 22), "2.pro")
+for e in evs:
+    if "Alps" in e["title"]:
+        print(e["start_datetime"], e["title"])

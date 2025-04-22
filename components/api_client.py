@@ -64,17 +64,32 @@ def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict
 
 
 # ——————————————
-# ProCyclingStats via Playwright (unchanged)
+# ProCyclingStats via Playwright
 # ——————————————
 CIRCUIT_IDS = {"1.uwt": 1, "2.pro": 26}
 
 
-def _parse_pcs_date(cell_text: str, year: int) -> _dt.date | None:
-    part = cell_text.split("–", 1)[0].strip()
+def _parse_pcs_date_range(
+    cell_text: str, year: int
+) -> tuple[_dt.date, _dt.date] | None:
+    """
+    Parse a date or date-range string like "21.04 – 25.04" into (start_date, end_date)
+    """
+    parts = [p.strip() for p in re.split(r"–|-", cell_text) if p.strip()]
     try:
-        d, m = map(int, part.split("."))
-        return _dt.date(year, m, d)
-    except:
+
+        def to_date(part: str):
+            d, m = map(int, part.split("."))
+            return _dt.date(year, m, d)
+
+        if len(parts) == 2:
+            start = to_date(parts[0])
+            end = to_date(parts[1])
+        else:
+            start = end = to_date(parts[0])
+        return start, end
+    except Exception:
+        logging.warning(f"Could not parse PCS date range: '{cell_text}'")
         return None
 
 
@@ -105,20 +120,30 @@ def get_pcs_season_events(classification: str, year: int) -> list[dict]:
         cols = row.find_all("td")
         if len(cols) < 3:
             continue
-        race_date = _parse_pcs_date(cols[0].get_text(strip=True), year)
+        date_cell = cols[0].get_text(strip=True)
+        date_range = _parse_pcs_date_range(date_cell, year)
+        if not date_range:
+            continue
+        start_date, end_date = date_range
         link = cols[2].find("a")
         title = link.get_text(strip=True) if link else cols[2].get_text(strip=True)
-        dt_obj = _dt.datetime.combine(race_date, _dt.time.min) if race_date else None
-        events.append(
-            {
-                "id": None,
-                "title": title,
-                "start_datetime": dt_obj,
-                "league_name": classification.upper(),
-                "league_id": classification,
-                "url": f"https://www.procyclingstats.com{link['href']}" if link else "",
-            }
-        )
+        href = link["href"] if link and link.has_attr("href") else None
+        # Emit one entry per day of the race
+        day = start_date
+        while day <= end_date:
+            dt_obj = _dt.datetime.combine(day, _dt.time.min)
+            events.append(
+                {
+                    "id": None,
+                    "title": title,
+                    "start_datetime": dt_obj,
+                    "league_name": classification.upper(),
+                    "league_id": classification,
+                    "url": f"https://www.procyclingstats.com{href}" if href else None,
+                }
+            )
+            day += _dt.timedelta(days=1)
+    # Sort chronologically
     events.sort(key=lambda e: e["start_datetime"] or _dt.datetime.min)
     return events
 
@@ -282,3 +307,5 @@ def get_wa_champs_by_day(day: _dt.date) -> list[dict]:
             "url": url,
         }
     ]
+
+

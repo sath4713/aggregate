@@ -390,6 +390,9 @@ ESPN_LEAGUES_FLAT = {
 # Streamlit setup
 # ——————————————
 st.set_page_config(layout="wide")
+# right after st.set_page_config(...)
+sidebar = st.sidebar.container()
+
 st.title("🏟️ Sports Hub")
 
 if "selected_leagues" not in st.session_state:
@@ -404,6 +407,7 @@ news_tab, sched_tab, profile_tab = tabs
 # 1) NEWS FEED TAB
 # ——————————————
 with news_tab:
+    sidebar.empty()
     st.header("📰 Your Custom News Feed")
     if st.button("🔄 Reload News"):
         st.cache_data.clear()
@@ -438,9 +442,9 @@ with news_tab:
 # 2) SCHEDULES TAB
 # ——————————————
 with sched_tab:
-    st.header(
-        "📅 Sports Schedules for " + st.session_state.selected_date.strftime("%Y-%m-%d")
-    )
+    st.header(f"📅 Sports Schedules for {st.session_state.selected_date:%Y-%m-%d}")
+
+    # ← Prev • Today • Next →
     c1, c2, c3 = st.columns(3)
     if c1.button("← Prev"):
         st.session_state.selected_date -= timedelta(days=1)
@@ -449,13 +453,17 @@ with sched_tab:
     if c3.button("Next →"):
         st.session_state.selected_date += timedelta(days=1)
 
-    sel_date = st.session_state.selected_date
+    # ⚙️ Sidebar selectors (only in Schedules)
+    sel_date = sidebar.date_input("Jump to date", value=st.session_state.selected_date)
     sel = st.session_state.selected_leagues
+
     if not sel:
         st.warning("Select leagues in Profile to see schedules.")
     else:
-        view_choice = st.sidebar.radio("View:", ["All"] + sel)
-        day_events = []
+        view_choice = sidebar.radio("View:", ["All"] + sel)
+
+        # Fetch & normalize day's events
+        day_events: list[dict] = []
         with st.spinner(f"Loading events for {sel_date}…"):
             for league in sel:
                 if league in PCS_LEAGUES:
@@ -475,19 +483,18 @@ with sched_tab:
                     e["league_name"] = league
                 day_events.extend(evs)
 
-        # convert all to local naive datetimes
+        # Convert all to naive local datetimes
         local_tz = _dt.datetime.now().astimezone().tzinfo
         for e in day_events:
             dt = e.get("start_datetime")
             if dt:
-                dt = (
-                    dt.astimezone(local_tz)
-                    if dt.tzinfo
-                    else dt.replace(tzinfo=local_tz)
-                )
+                if dt.tzinfo:
+                    dt = dt.astimezone(local_tz)
+                else:
+                    dt = dt.replace(tzinfo=local_tz)
                 e["start_datetime"] = dt.replace(tzinfo=None)
 
-        # render
+        # Sort & render calendar
         day_events.sort(
             key=lambda e: (
                 e.get("start_datetime").timestamp() if e.get("start_datetime") else 0
@@ -500,31 +507,34 @@ with sched_tab:
         )
         renderScheduleCalendar(subset, sel_date)
 
+        # Next Event Up (in‑tab)
         next_ev = get_next_event(view_choice, date.today())
-if next_ev:
-    ev_dt = next_ev["start_datetime"]
-    # normalize to local tz
-    if ev_dt.tzinfo:
-        ev_dt = ev_dt.astimezone(tzlocal())
-    else:
-        ev_dt = ev_dt.replace(tzinfo=tzlocal())
-    # strip tzinfo for a naive local datetime
-    ev_dt = ev_dt.replace(tzinfo=None)
+        if next_ev:
+            ev_dt = next_ev["start_datetime"]
+            if ev_dt.tzinfo:
+                ev_dt = ev_dt.astimezone(tzlocal())
+            else:
+                ev_dt = ev_dt.replace(tzinfo=tzlocal())
+            ev_dt = ev_dt.replace(tzinfo=None)
 
-    date_str = ev_dt.strftime("%-m/%-d")  # e.g. “4/22”
-    time_str = ev_dt.strftime("%I:%M %p")  # e.g. “07:00 PM”
-    name = next_ev.get("title") or f"{next_ev['away_team']} at {next_ev['home_team']}"
-    st.write(f"**{name}** — {date_str} – {time_str}")
-    if url := next_ev.get("url"):
-        st.write(f"[More info]({url})")
-else:
-    st.info("No upcoming events found for this league.")
+            date_str = ev_dt.strftime("%-m/%-d")
+            time_str = ev_dt.strftime("%I:%M %p")
+            name = (
+                next_ev.get("title")
+                or f"{next_ev.get('away_team','')} at {next_ev.get('home_team','')}"
+            )
+
+            st.markdown("### Next Event Up")
+            st.write(f"**{name}** — {date_str} – {time_str}")
+            if url := next_ev.get("url"):
+                st.write(f"[More info]({url})")
 
 
 # ——————————————
 # 3) PROFILE TAB
 # ——————————————
 with profile_tab:
+    sidebar.empty()
     st.header("👤 Your Profile")
     if st.button("🔄 Reset Profile"):
         reset_profile()
