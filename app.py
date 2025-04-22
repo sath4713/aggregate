@@ -264,6 +264,7 @@ import streamlit as st
 from datetime import date, timedelta
 import datetime as _dt
 import os, json
+from dateutil.tz import tzlocal
 
 from components.available_feeds import available_feeds
 from components.newsFeed import renderMultipleNewsFeeds
@@ -276,6 +277,34 @@ from components.api_client import (
     get_marathon_majors_by_day,
     get_wa_champs_by_day,
 )
+
+
+# ——————————————
+# Next Event Up Helper
+# ——————————————
+# Dynamically searches forward from `start` up to 365 days for the next event in the given league.
+def get_next_event(league: str, start: date) -> dict | None:
+    for offset in range(365):
+        day = start + timedelta(days=offset)
+        if league in PCS_LEAGUES:
+            evs = get_pcs_events_by_day(day, PCS_LEAGUES[league])
+        elif league in ESPN_LEAGUES_FLAT:
+            sport, slug = ESPN_LEAGUES_FLAT[league]
+            evs = get_espn_scoreboard(sport, slug, day)
+        elif league == "Diamond League":
+            evs = get_diamond_league_events_by_day(day)
+        elif league == "World Marathon Majors":
+            evs = get_marathon_majors_by_day(day)
+        elif league == "World Athletics Championships":
+            evs = get_wa_champs_by_day(day)
+        else:
+            evs = []
+        if evs:
+            # return the earliest event of that day
+            evs.sort(key=lambda e: e.get("start_datetime") or _dt.datetime.min)
+            return evs[0]
+    return None
+
 
 # ——————————————
 # Profile persistence
@@ -338,7 +367,6 @@ LEAGUES_BY_SPORT = {
         "US Open": ("tennis", "usopen"),
         # ... other tennis ...
     },
-    # ——— ADD ATHLETICS SECTION ———
     "Athletics": {
         "Diamond League": (None, None),
         "World Marathon Majors": (None, None),
@@ -351,7 +379,6 @@ PCS_LEAGUES = {
     "UCI ProSeries": "2.pro",
 }
 
-# flatten ESPN lookups
 ESPN_LEAGUES_FLAT = {
     league: (api_sport, api_slug)
     for _, leagues in LEAGUES_BY_SPORT.items()
@@ -411,28 +438,24 @@ with news_tab:
 # 2) SCHEDULES TAB
 # ——————————————
 with sched_tab:
-    st.header("📅 Sports Schedules")
-
-    prev_c, today_c, next_c = st.columns(3)
-    if prev_c.button("← Prev"):
+    st.header(
+        "📅 Sports Schedules for " + st.session_state.selected_date.strftime("%Y-%m-%d")
+    )
+    c1, c2, c3 = st.columns(3)
+    if c1.button("← Prev"):
         st.session_state.selected_date -= timedelta(days=1)
-    if today_c.button("• Today"):
+    if c2.button("Today"):
         st.session_state.selected_date = date.today()
-    if next_c.button("Next →"):
+    if c3.button("Next →"):
         st.session_state.selected_date += timedelta(days=1)
 
-    sel_date = st.sidebar.date_input(
-        "Jump to date", value=st.session_state.selected_date
-    )
+    sel_date = st.session_state.selected_date
     sel = st.session_state.selected_leagues
-
     if not sel:
         st.warning("Select leagues in Profile to see schedules.")
     else:
-        view_opts = ["All"] + sel
-        view_choice = st.sidebar.radio("View:", view_opts, index=0)
-
-        day_events: list[dict] = []
+        view_choice = st.sidebar.radio("View:", ["All"] + sel)
+        day_events = []
         with st.spinner(f"Loading events for {sel_date}…"):
             for league in sel:
                 if league in PCS_LEAGUES:
@@ -448,22 +471,55 @@ with sched_tab:
                     evs = get_wa_champs_by_day(sel_date)
                 else:
                     evs = []
-
                 for e in evs:
                     e["league_name"] = league
                 day_events.extend(evs)
 
+        # convert all to local naive datetimes
+        local_tz = _dt.datetime.now().astimezone().tzinfo
+        for e in day_events:
+            dt = e.get("start_datetime")
+            if dt:
+                dt = (
+                    dt.astimezone(local_tz)
+                    if dt.tzinfo
+                    else dt.replace(tzinfo=local_tz)
+                )
+                e["start_datetime"] = dt.replace(tzinfo=None)
+
+        # render
         day_events.sort(
             key=lambda e: (
-                e.get("start_datetime").timestamp() if e.get("start_datetime") else -1
+                e.get("start_datetime").timestamp() if e.get("start_datetime") else 0
             )
         )
+        subset = (
+            day_events
+            if view_choice == "All"
+            else [e for e in day_events if e["league_name"] == view_choice]
+        )
+        renderScheduleCalendar(subset, sel_date)
 
-        if view_choice == "All":
-            renderScheduleCalendar(day_events, sel_date)
-        else:
-            subset = [e for e in day_events if e["league_name"] == view_choice]
-            renderScheduleCalendar(subset, sel_date)
+        next_ev = get_next_event(view_choice, date.today())
+if next_ev:
+    ev_dt = next_ev["start_datetime"]
+    # normalize to local tz
+    if ev_dt.tzinfo:
+        ev_dt = ev_dt.astimezone(tzlocal())
+    else:
+        ev_dt = ev_dt.replace(tzinfo=tzlocal())
+    # strip tzinfo for a naive local datetime
+    ev_dt = ev_dt.replace(tzinfo=None)
+
+    date_str = ev_dt.strftime("%-m/%-d")  # e.g. “4/22”
+    time_str = ev_dt.strftime("%I:%M %p")  # e.g. “07:00 PM”
+    name = next_ev.get("title") or f"{next_ev['away_team']} at {next_ev['home_team']}"
+    st.write(f"**{name}** — {date_str} – {time_str}")
+    if url := next_ev.get("url"):
+        st.write(f"[More info]({url})")
+else:
+    st.info("No upcoming events found for this league.")
+
 
 # ——————————————
 # 3) PROFILE TAB
