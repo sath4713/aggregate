@@ -132,6 +132,7 @@ def renderMultipleNewsFeeds(selected_urls: list, max_items_per_feed: int = 10):
         st.markdown("---")
 
     if errors:
-        st.sidebar.error("Some feeds failed:")
+        st.error("Some feeds failed to load:")
         for url, msg in errors.items():
-            st.sidebar.caption(f"- {get_feed_name_from_url(url) or url}: {msg}")
+            st.caption(f"- {get_feed_name_from_url(url) or url}: {msg}")
+

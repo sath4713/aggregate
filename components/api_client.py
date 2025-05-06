@@ -27,23 +27,31 @@ def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict
             f"ESPN fetch failed ({sport}/{league}@{date_str}): {e}", exc_info=True
         )
         return []
-    out = []
+
+    out: list[dict] = []
     for ev in data.get("events", []):
         comp = ev.get("competitions", [{}])[0]
         try:
             dt_obj = parser.parse(ev.get("date"))
         except Exception:
             dt_obj = None
+
+        # Find home & away competitors
         comps = comp.get("competitors", [])
         home = next((c for c in comps if c.get("homeAway") == "home"), {})
         away = next((c for c in comps if c.get("homeAway") == "away"), {})
+
         stype = comp.get("status", {}).get("type", {})
         status = stype.get("shortDetail", "Scheduled")
+
+        # Build result as Home – Away
         result = None
         if stype.get("completed") or "Final" in status:
-            hs, as_ = home.get("score"), away.get("score")
-            if hs is not None and as_ is not None:
-                result = f"{hs} – {as_}"
+            home_score = home.get("score")
+            away_score = away.get("score")
+            if home_score is not None and away_score is not None:
+                result = f"{home_score} – {away_score}"
+
         out.append(
             {
                 "id": ev.get("id"),
@@ -59,6 +67,7 @@ def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict
                 "url": (ev.get("links") or [{}])[0].get("href", ""),
             }
         )
+
     out.sort(key=lambda x: x["start_datetime"] or _dt.datetime.min)
     return out
 
@@ -307,5 +316,3 @@ def get_wa_champs_by_day(day: _dt.date) -> list[dict]:
             "url": url,
         }
     ]
-
-

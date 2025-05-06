@@ -1,32 +1,47 @@
-# #!/usr/bin/env python3
-# """
-# Quick test script to verify that Tour of the Alps appears on each day of its ProSeries date range.
-# """
-# from components.api_client import get_pcs_season_events
+# debug_rest_days.py
+
+import requests, re
+from bs4 import BeautifulSoup
+import datetime
 
 
-# def main():
-#     # Fetch all UCI ProSeries races for 2025
-#     events = get_pcs_season_events("2.pro", 2025)
+def get_rest_days_for_tour(slug: str, year: int) -> list[datetime.date]:
+    url = f"https://www.procyclingstats.com/race/{slug}/{year}"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"ERROR fetching {url}: {e}")
+        return []
 
-#     # Filter for Tour of the Alps
-#     alps = [e for e in events if "Alps" in e.get("title", "")]
+    soup = BeautifulSoup(resp.text, "html.parser")
+    # look for the “Stages” header (h2 or h3)
+    header = soup.find(
+        lambda tag: tag.name in ("h2", "h3") and "Stages" in tag.get_text()
+    )
+    if not header:
+        print("❌ Couldn't find Stages header")
+        return []
 
-#     print(f"Found {len(alps)} entries for Tour of the Alps:\n")
-#     for e in alps:
-#         dt = e.get("start_datetime")
-#         # dt should be a datetime.datetime
-#         date_only = dt.strftime("%Y-%m-%d") if dt else "None"
-#         print(f"  • {e.get('title')} — {date_only} ({dt})")
+    block = header.find_next_sibling()
+    if not block:
+        print("❌ No content after Stages header")
+        return []
+
+    rest_days = []
+    for line in block.get_text("\n", strip=True).splitlines():
+        if "Restday" not in line:
+            continue
+        m = re.search(r"(\d{1,2}/\d{1,2})", line)
+        if not m:
+            continue
+        d, mth = map(int, m.group(1).split("/"))
+        rest_days.append(datetime.date(year, mth, d))
+
+    return rest_days
 
 
-# if __name__ == "__main__":
-#     main()
-
-from components.api_client import get_pcs_events_by_day
-from datetime import date
-
-evs = get_pcs_events_by_day(date(2025, 4, 22), "2.pro")
-for e in evs:
-    if "Alps" in e["title"]:
-        print(e["start_datetime"], e["title"])
+if __name__ == "__main__":
+    for slug in ("giro-d-italia", "tour-de-france", "vuelta-a-espana"):
+        days = get_rest_days_for_tour(slug, 2025)
+        print(f"{slug} rest days → {days}")
