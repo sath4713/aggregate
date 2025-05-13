@@ -40,11 +40,41 @@ def fetch_feed_text(feed_url: str) -> str | None:
         return None
 
 
-def renderMultipleNewsFeeds(selected_urls: list, max_items_per_feed: int = 10):
+def renderMultipleNewsFeeds(selected_urls: list[str], max_items_per_feed: int = 10):
     """
     Fetches, combines, sorts, and renders news items from the selected RSS URLs.
     Only the XML fetch is cached; parsing runs on every render to avoid pickling issues.
     """
+    # Inject compact heading CSS once
+    # Inject tight CSS once
+    # Inject tight CSS for expander spacing (handles different Streamlit class names)
+    if not st.session_state.get("_news_css_loaded", False):
+        st.markdown(
+            """
+            <style>
+            /* Tighter spacing around each expander */
+            .stExpander, .streamlit-expander {
+                margin: 0.25rem 0;
+            }
+            /* Reduce header padding and headline margins */
+            .stExpanderHeader, .streamlit-expanderHeader {
+                padding-top: 0;
+                padding-bottom: 0;
+            }
+            .stExpanderHeader h3, .streamlit-expanderHeader h3 {
+                margin: 0.1rem 0;
+                font-size: 1rem;
+            }
+            /* Tighten summary paragraph spacing */
+            .stExpanderContent p, .streamlit-expanderContent p {
+                margin: 0.1rem 0 0.5rem 0;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.session_state["_news_css_loaded"] = True
+
     if not selected_urls:
         st.info("Select one or more leagues in your Profile to see news here.")
         return
@@ -52,7 +82,7 @@ def renderMultipleNewsFeeds(selected_urls: list, max_items_per_feed: int = 10):
     all_entries = []
     errors = {}
 
-    st.header("🗞️ Your Custom News Feed")
+    st.header("News Feed")
     with st.spinner(f"Fetching news from {len(selected_urls)} sources..."):
         for url in selected_urls:
             xml = fetch_feed_text(url)
@@ -102,37 +132,42 @@ def renderMultipleNewsFeeds(selected_urls: list, max_items_per_feed: int = 10):
                 st.caption(f"- {get_feed_name_from_url(url) or url}: {msg}")
         return
 
+    # Render each entry as a collapsible card
     for entry in all_entries:
-        title, link = entry["title"], entry["link"]
-        st.markdown(f"### [{title}]({link})" if link else f"### {title}")
-
-        # Image
-        img_url = None
-        if entry["media_thumbnail"]:
-            img_url = entry["media_thumbnail"][0].get("url")
-        else:
-            for l in entry["links"]:
-                if "image" in l.get("type", ""):
-                    img_url = l.get("href")
-                    break
-        if img_url:
-            st.image(img_url, width=500)
-
-        # Summary
-        if entry["summary"]:
-            st.markdown(entry["summary"], unsafe_allow_html=True)
-
-        # Date & Source
+        title = entry["title"]
+        link = entry.get("link")
+        pub_dt = entry.get("published_datetime")
         pub_str = (
-            entry["published_datetime"].strftime("%a, %d %b %Y %H:%M")
-            if entry["published_datetime"]
-            else entry["published"] or "Date n/a"
+            pub_dt.strftime("%a, %d %b %Y %H:%M")
+            if pub_dt
+            else entry.get("published") or "Date n/a"
         )
-        st.write(f"*Source: {entry['source_name']} | Published: {pub_str}*")
-        st.markdown("---")
+        source = entry.get("source_name")
 
+        with st.expander(f"{title}  —  {source}", expanded=False):
+            cols = st.columns([1, 3])
+            # Thumbnail in left column
+            img_url = None
+            if entry.get("media_thumbnail"):
+                img_url = entry["media_thumbnail"][0].get("url")
+            else:
+                for l in entry.get("links", []):
+                    if "image" in l.get("type", ""):
+                        img_url = l.get("href")
+                        break
+            if img_url:
+                cols[0].image(img_url, use_column_width=True)
+
+            # Content in right column
+            cols[1].markdown(f"**[{title}]({link})**")
+            if entry.get("summary"):
+                cols[1].write(entry["summary"])
+            cols[1].caption(f"Published: {pub_str}  |  Source: {source}")
+
+        st.divider()
+
+    # Show errors at bottom if any
     if errors:
         st.error("Some feeds failed to load:")
         for url, msg in errors.items():
             st.caption(f"- {get_feed_name_from_url(url) or url}: {msg}")
-

@@ -31,32 +31,46 @@ def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict
     out: list[dict] = []
     for ev in data.get("events", []):
         comp = ev.get("competitions", [{}])[0]
+        # parse start datetime
         try:
             dt_obj = parser.parse(ev.get("date"))
         except Exception:
             dt_obj = None
 
-        # Find home & away competitors
+        # home/away teams
         comps = comp.get("competitors", [])
         home = next((c for c in comps if c.get("homeAway") == "home"), {})
         away = next((c for c in comps if c.get("homeAway") == "away"), {})
 
+        # game status & result
         stype = comp.get("status", {}).get("type", {})
         status = stype.get("shortDetail", "Scheduled")
-
-        # Build result as Home – Away
         result = None
         if stype.get("completed") or "Final" in status:
-            home_score = home.get("score")
-            away_score = away.get("score")
-            if home_score is not None and away_score is not None:
-                result = f"{home_score} – {away_score}"
+            hs, as_ = home.get("score"), away.get("score")
+            if hs is not None and as_ is not None:
+                result = f"{hs} – {as_}"
+
+        # find the “event” link
+        url_link = None
+        for link in ev.get("links", []):
+            # rel is often a list like ["event"], or ["summary","event"]
+            rels = link.get("rel", [])
+            if isinstance(rels, list) and "event" in rels:
+                url_link = link.get("href")
+                break
+
+        # **New: extract logos**
+        home_logo = home.get("team", {}).get("logo")
+        away_logo = away.get("team", {}).get("logo")
 
         out.append(
             {
                 "id": ev.get("id"),
                 "home_team": home.get("team", {}).get("displayName", "TBD"),
                 "away_team": away.get("team", {}).get("displayName", "TBD"),
+                "home_logo": home_logo,
+                "away_logo": away_logo,
                 "start_datetime": dt_obj,
                 "venue": comp.get("venue", {}).get("fullName", ""),
                 "status": status,
@@ -64,7 +78,7 @@ def get_espn_scoreboard(sport: str, league: str, dt_date: _dt.date) -> list[dict
                 "network": (comp.get("broadcasts") or [{}])[0].get("callLetters"),
                 "league_name": league.upper(),
                 "league_id": f"{sport}/{league}",
-                "url": (ev.get("links") or [{}])[0].get("href", ""),
+                "url": url_link,
             }
         )
 

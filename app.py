@@ -153,7 +153,7 @@ news_tab, sched_tab, profile_tab = tabs
 # 1) NEWS FEED TAB
 # ——————————————
 with news_tab:
-    st.header("📰 Your Custom News Feed")
+
     if st.button("🔄 Reload News"):
         st.cache_data.clear()
         st.rerun()
@@ -188,7 +188,6 @@ with news_tab:
 # 2) SCHEDULES TAB
 # ——————————————
 with sched_tab:
-    st.header(f"📅 Sports Schedules for {st.session_state.selected_date:%Y-%m-%d}")
 
     # ← Prev • Today • Next →
     c1, c2, c3 = st.columns(3)
