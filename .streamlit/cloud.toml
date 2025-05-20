@@ -1,0 +1,3 @@
+[build]
+# after pip install -r requirements.txt, run this:
+postBuild = "playwright install"
