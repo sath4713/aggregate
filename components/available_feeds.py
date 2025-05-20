@@ -29,10 +29,12 @@ available_feeds = {
         {"name": "Gripped Magazine", "url": "https://gripped.com/feed/"},
         # Note: BBC Tennis seems misplaced here, moved to Tennis
     ],
-    "Running": [  # Simple list
+    "Athletics": [  # Simple list
         {"name": "Lets Run", "url": "https://www.letsrun.com/feed/"},
-        {"name": "Run247", "url": "https://run247.com/feed"},
-        {"name": "IAAF", "url": "http://www.iaaf.org/rssfeed/index.xml"},
+        {"name": "Track and Field News", "url": "https://trackandfieldnews.com/feed"},
+        {"name": "Athletics Weekly", "url": "https://athleticsweekly.com/feed"},
+        # {"name": "Run247", "url": "https://run247.com/feed"},
+        # {"name": "IAAF", "url": "http://www.iaaf.org/rssfeed/index.xml"},
     ],
     "Soccer": {
         "Bundesliga": [
@@ -40,10 +42,10 @@ available_feeds = {
                 "name": "Bundesliga - The Athletic",
                 "url": "https://www.nytimes.com/athletic/rss/bundesliga/",
             },
-            {
-                "name": "Bundesliga - The Guardian",
-                "url": "http://www.guardian.co.uk/football/bundesligafootball/rss",
-            },
+            # {
+            #     "name": "Bundesliga - The Guardian",
+            #     "url": "http://www.guardian.co.uk/football/bundesligafootball/rss",
+            # },
         ],
         "ChampionsLeague": [
             {
@@ -75,25 +77,25 @@ available_feeds = {
                 "name": "La Liga - The Athletic",
                 "url": "https://www.nytimes.com/athletic/rss/la-liga/",
             },
-            {
-                "name": "La Liga - The Guardian",
-                "url": "http://www.guardian.co.uk/football/laligafootball/rss",
-            },
+            # {
+            #     "name": "La Liga - The Guardian",
+            #     "url": "http://www.guardian.co.uk/football/laligafootball/rss",
+            # },
         ],
-        "GeneralSoccer": [
-            {
-                "name": "General Soccer - ESPN",
-                "url": "https://www.espn.com/espn/rss/soccer/news",
-            },
-            {
-                "name": "General Soccer - Soccer News",
-                "url": "https://www.soccernews.com/feed/",
-            },
-            {
-                "name": "General Soccer - The Athletic",
-                "url": "https://www.nytimes.com/athletic/rss/football/",
-            },
-        ],
+        # "GeneralSoccer": [
+        #     {
+        #         "name": "General Soccer - ESPN",
+        #         "url": "https://www.espn.com/espn/rss/soccer/news",
+        #     },
+        #     {
+        #         "name": "General Soccer - Soccer News",
+        #         "url": "https://www.soccernews.com/feed/",
+        #     },
+        #     {
+        #         "name": "General Soccer - The Athletic",
+        #         "url": "https://www.nytimes.com/athletic/rss/football/",
+        #     },
+        # ],
     },
     "Cycling": [  # Simple list
         {"name": "CyclingWeekly", "url": "https://www.cyclingweekly.com/feeds.xml"},
@@ -112,29 +114,35 @@ available_feeds = {
         # Duplicate 'Top Stories - ESPN' removed as it's likely same as first ESPN link
     ],
     "Basketball": {
-        "NCAAM": [
-            {
-                "name": "NCAAM - Yahoo Sports",
-                "url": "https://sports.yahoo.com/ncaab/rss.xml",
-            },
-            {
-                "name": "NCAAB - ESPN",
-                "url": "https://www.espn.com/espn/rss/ncb/news",
-            },  # Combined NCAAB/NCAAM ESPN
-            {
-                "name": "NCAAM - The Athletic",
-                "url": "https://www.nytimes.com/athletic/rss/college-basketball/",
-            },
-            {"name": "NCAAB - The Score", "url": "http://feeds.thescore.com/ncaab.rss"},
-        ],
-        "NCAAW": [
-            {"name": "NCAAW - ESPN", "url": "https://www.espn.com/espn/rss/ncw/news"},
-        ],
+        # "NCAAM": [
+        #     {
+        #         "name": "NCAAM - Yahoo Sports",
+        #         "url": "https://sports.yahoo.com/ncaab/rss.xml",
+        #     },
+        #     {
+        #         "name": "NCAAB - ESPN",
+        #         "url": "https://www.espn.com/espn/rss/ncb/news",
+        #     },  # Combined NCAAB/NCAAM ESPN
+        #     {
+        #         "name": "NCAAM - The Athletic",
+        #         "url": "https://www.nytimes.com/athletic/rss/college-basketball/",
+        #     },
+        #     {"name": "NCAAB - The Score", "url": "http://feeds.thescore.com/ncaab.rss"},
+        # ],
+        # "NCAAW": [
+        #     {"name": "NCAAW - ESPN", "url": "https://www.espn.com/espn/rss/ncw/news"},
+        # ],
         "NBA": [
             {"name": "NBA - ESPN", "url": "https://www.espn.com/espn/rss/nba/news"},
             {
                 "name": "NBA - The Athletic",
                 "url": "https://www.nytimes.com/athletic/rss/nba/",
+            },
+        ],
+        "WNBA": [
+            {
+                "name": "WNBA - Yahoo Sports",
+                "url": "https://sports.yahoo.com/wnba/rss",
             },
         ],
     },
