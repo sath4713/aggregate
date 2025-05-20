@@ -14,3 +14,5 @@ python-dateutil>=2.8.2
 
 # Headless browser for PCS scraping
 playwright>=1.36.0
+
+# post-install: python -m playwright install chromium
