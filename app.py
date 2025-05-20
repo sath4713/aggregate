@@ -1,4 +1,34 @@
 # app.py
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def ensure_playwright_browsers_installed():
+    """Check if Playwright browsers are installed and install if needed."""
+    try:
+        # Check if browser directory exists
+        home_dir = os.path.expanduser("~")
+        chromium_path = Path(
+            f"{home_dir}/.cache/ms-playwright/chromium_headless_shell-1169/chrome-linux/headless_shell"
+        )
+
+        if not chromium_path.exists():
+            print("Playwright browsers not found. Installing now...")
+            subprocess.run(
+                [sys.executable, "-m", "playwright", "install", "chromium"], check=True
+            )
+            print("Playwright browsers installed successfully!")
+        else:
+            print("Playwright browsers already installed.")
+    except Exception as e:
+        print(f"Error checking/installing Playwright browsers: {e}")
+
+
+# This must be called before any imports that might use Playwright
+ensure_playwright_browsers_installed()
+
 
 import streamlit as st
 from datetime import date, timedelta, time
@@ -334,6 +364,3 @@ with profile_tab:
     if st.button("💾 Save Profile"):
         save_profile(st.session_state.selected_leagues)
         st.success("Profile saved for next time!")
-
-
-
